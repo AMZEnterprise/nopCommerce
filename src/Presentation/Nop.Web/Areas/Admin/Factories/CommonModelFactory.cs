@@ -4,12 +4,12 @@ using System.Diagnostics;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
-using Autofac;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Infrastructure;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.AspNetCore.Mvc.Routing;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Net.Http.Headers;
 using Nop.Core;
 using Nop.Core.Caching;
@@ -20,6 +20,7 @@ using Nop.Core.Domain.Customers;
 using Nop.Core.Domain.Directory;
 using Nop.Core.Domain.Orders;
 using Nop.Core.Domain.Security;
+using Nop.Core.Events;
 using Nop.Core.Infrastructure;
 using Nop.Data;
 using Nop.Services.Authentication.External;
@@ -62,9 +63,9 @@ namespace Nop.Web.Areas.Admin.Factories
         private readonly IActionContextAccessor _actionContextAccessor;
         private readonly IAuthenticationPluginManager _authenticationPluginManager;
         private readonly IBaseAdminModelFactory _baseAdminModelFactory;
-        private readonly IComponentContext _componentContext;
         private readonly ICurrencyService _currencyService;
         private readonly ICustomerService _customerService;
+        private readonly IEventPublisher _eventPublisher;
         private readonly INopDataProvider _dataProvider;
         private readonly IDateTimeHelper _dateTimeHelper;
         private readonly IExchangeRatePluginManager _exchangeRatePluginManager;
@@ -82,6 +83,7 @@ namespace Nop.Web.Areas.Admin.Factories
         private readonly IProductService _productService;
         private readonly IReturnRequestService _returnRequestService;
         private readonly ISearchTermService _searchTermService;
+        private readonly IServiceCollection _serviceCollection;
         private readonly IShippingPluginManager _shippingPluginManager;
         private readonly IStaticCacheManager _staticCacheManager;
         private readonly IStoreContext _storeContext;
@@ -107,9 +109,9 @@ namespace Nop.Web.Areas.Admin.Factories
             IActionContextAccessor actionContextAccessor,
             IAuthenticationPluginManager authenticationPluginManager,
             IBaseAdminModelFactory baseAdminModelFactory,
-            IComponentContext componentContext,
             ICurrencyService currencyService,
             ICustomerService customerService,
+            IEventPublisher eventPublisher,
             INopDataProvider dataProvider,
             IDateTimeHelper dateTimeHelper,
             INopFileProvider fileProvider,
@@ -127,6 +129,7 @@ namespace Nop.Web.Areas.Admin.Factories
             IProductService productService,
             IReturnRequestService returnRequestService,
             ISearchTermService searchTermService,
+            IServiceCollection serviceCollection,
             IShippingPluginManager shippingPluginManager,
             IStaticCacheManager staticCacheManager,
             IStoreContext storeContext,
@@ -148,9 +151,9 @@ namespace Nop.Web.Areas.Admin.Factories
             _actionContextAccessor = actionContextAccessor;
             _authenticationPluginManager = authenticationPluginManager;
             _baseAdminModelFactory = baseAdminModelFactory;
-            _componentContext = componentContext;
             _currencyService = currencyService;
             _customerService = customerService;
+            _eventPublisher = eventPublisher;
             _dataProvider = dataProvider;
             _dateTimeHelper = dateTimeHelper;
             _exchangeRatePluginManager = exchangeRatePluginManager;
@@ -168,6 +171,7 @@ namespace Nop.Web.Areas.Admin.Factories
             _productService = productService;
             _returnRequestService = returnRequestService;
             _searchTermService = searchTermService;
+            _serviceCollection = serviceCollection;
             _shippingPluginManager = shippingPluginManager;
             _staticCacheManager = staticCacheManager;
             _storeContext = storeContext;
@@ -456,16 +460,18 @@ namespace Nop.Web.Areas.Admin.Factories
                         assembly.ShortName, assembly.AssemblyFullNameInMemory, message)
                 });
             }
-
+            
             //check whether there are different plugins which try to override the same interface
             var baseLibraries = new[] { "Nop.Core", "Nop.Data", "Nop.Services", "Nop.Web", "Nop.Web.Framework" };
-            var overridenServices = _componentContext.ComponentRegistry.Registrations.Where(p =>
-                    p.Services.Any(s =>
-                        s.Description.StartsWith("Nop.", StringComparison.InvariantCulture) &&
-                        !s.Description.StartsWith(typeof(IConsumer<>).FullName?.Replace("~1", string.Empty) ?? string.Empty,
-                            StringComparison.InvariantCulture))).SelectMany(p => p.Services.Select(x =>
-                    KeyValuePair.Create(x.Description, p.Target.Activator.LimitType.Assembly.GetName().Name)))
-                .Where(p => baseLibraries.All(library => !p.Value.StartsWith(library, StringComparison.InvariantCultureIgnoreCase)))
+            var overridenServices = _serviceCollection.Where(p =>
+                    p.ServiceType.FullName != null &&
+                    p.ServiceType.FullName.StartsWith("Nop.", StringComparison.InvariantCulture) &&
+                    !p.ServiceType.FullName.StartsWith(
+                        typeof(IConsumer<>).FullName?.Replace("~1", string.Empty) ?? string.Empty,
+                        StringComparison.InvariantCulture)).Select(p =>
+                    KeyValuePair.Create(p.ServiceType.FullName, p.ImplementationType?.Assembly.GetName().Name))
+                .Where(p => baseLibraries.All(library =>
+                    !p.Value?.StartsWith(library, StringComparison.InvariantCultureIgnoreCase) ?? false))
                 .GroupBy(p => p.Key, p => p.Value)
                 .Where(p => p.Count() > 1)
                 .ToDictionary(p => p.Key, p => p.ToList());
@@ -686,7 +692,7 @@ namespace Nop.Web.Areas.Admin.Factories
             try
             {
                 model.OperatingSystem = Environment.OSVersion.VersionString;
-                model.AspNetInfo = RuntimeEnvironment.GetSystemVersion();
+                model.AspNetInfo = RuntimeInformation.FrameworkDescription;
                 model.IsFullTrust = AppDomain.CurrentDomain.IsFullyTrusted;
             }
             catch
@@ -731,12 +737,14 @@ namespace Nop.Web.Areas.Admin.Factories
                 model.LoadedAssemblies.Add(loadedAssemblyModel);
             }
 
-            model.CurrentStaticCacheManager = _staticCacheManager.GetType().Name;
 
-            model.RedisEnabled = _appSettings.RedisConfig.Enabled;
-            model.UseRedisToStoreDataProtectionKeys = _appSettings.RedisConfig.StoreDataProtectionKeys;
-            model.UseRedisForCaching = _appSettings.RedisConfig.UseCaching;
-            model.UseRedisToStorePluginsInfo = _appSettings.RedisConfig.StorePluginsInfo;
+            var currentStaticCacheManagerName = _staticCacheManager.GetType().Name;
+
+            if (_appSettings.DistributedCacheConfig.Enabled)
+                currentStaticCacheManagerName +=
+                    $"({await _localizationService.GetLocalizedEnumAsync(_appSettings.DistributedCacheConfig.DistributedCacheType)})";
+
+            model.CurrentStaticCacheManager = currentStaticCacheManagerName;
 
             model.AzureBlobStorageEnabled = _appSettings.AzureBlobConfig.Enabled;
 
@@ -821,6 +829,12 @@ namespace Nop.Web.Areas.Admin.Factories
 
             //proxy connection
             await PrepareProxyConnectionWarningModelAsync(models);
+
+            //publish event
+            var warningEvent = new SystemWarningCreatedEvent();
+            await _eventPublisher.PublishAsync(warningEvent);
+            //add another warnings (for example from plugins) 
+            models.AddRange(warningEvent.SystemWarnings);
 
             return models;
         }

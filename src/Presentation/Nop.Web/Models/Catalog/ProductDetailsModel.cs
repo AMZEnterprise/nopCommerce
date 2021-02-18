@@ -11,7 +11,7 @@ using Nop.Web.Models.ShoppingCart;
 
 namespace Nop.Web.Models.Catalog
 {
-    public partial class ProductDetailsModel : BaseNopEntityModel
+    public partial record ProductDetailsModel : BaseNopEntityModel
     {
         public ProductDetailsModel()
         {
@@ -44,6 +44,7 @@ namespace Nop.Web.Models.Catalog
         public string MetaDescription { get; set; }
         public string MetaTitle { get; set; }
         public string SeName { get; set; }
+        public bool VisibleIndividually { get; set; }
 
         public ProductType ProductType { get; set; }
 
@@ -116,7 +117,7 @@ namespace Nop.Web.Models.Catalog
 
         #region Nested Classes
 
-        public partial class ProductBreadcrumbModel : BaseNopModel
+        public partial record ProductBreadcrumbModel : BaseNopModel
         {
             public ProductBreadcrumbModel()
             {
@@ -130,7 +131,7 @@ namespace Nop.Web.Models.Catalog
             public IList<CategorySimpleModel> CategoryBreadcrumb { get; set; }
         }
 
-        public partial class AddToCartModel : BaseNopModel
+        public partial record AddToCartModel : BaseNopModel
         {
             public AddToCartModel()
             {
@@ -167,7 +168,7 @@ namespace Nop.Web.Models.Catalog
             public ShoppingCartType? UpdateShoppingCartItemType { get; set; }
         }
 
-        public partial class ProductPriceModel : BaseNopModel
+        public partial record ProductPriceModel : BaseNopModel
         {
             /// <summary>
             /// The currency (in 3-letter ISO 4217 format) of the offer price 
@@ -202,7 +203,7 @@ namespace Nop.Web.Models.Catalog
             public string BasePricePAngV { get; set; }
         }
 
-        public partial class GiftCardModel : BaseNopModel
+        public partial record GiftCardModel : BaseNopModel
         {
             public bool IsGiftCard { get; set; }
 
@@ -226,14 +227,14 @@ namespace Nop.Web.Models.Catalog
             public GiftCardType GiftCardType { get; set; }
         }
 
-        public partial class TierPriceModel : BaseNopModel
+        public partial record TierPriceModel : BaseNopModel
         {
             public string Price { get; set; }
 
             public int Quantity { get; set; }
         }
 
-        public partial class ProductAttributeModel : BaseNopEntityModel
+        public partial record ProductAttributeModel : BaseNopEntityModel
         {
             public ProductAttributeModel()
             {
@@ -285,7 +286,7 @@ namespace Nop.Web.Models.Catalog
             public IList<ProductAttributeValueModel> Values { get; set; }
         }
 
-        public partial class ProductAttributeValueModel : BaseNopEntityModel
+        public partial record ProductAttributeValueModel : BaseNopEntityModel
         {
             public ProductAttributeValueModel()
             {
@@ -315,7 +316,7 @@ namespace Nop.Web.Models.Catalog
             public int Quantity { get; set; }
         }
 
-        public partial class ProductEstimateShippingModel : EstimateShippingModel
+        public partial record ProductEstimateShippingModel : EstimateShippingModel
         {
             public int ProductId { get; set; }
         }

@@ -1,5 +1,6 @@
 ﻿using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Routing;
+using Nop.Data;
 using Nop.Web.Framework.Mvc.Routing;
 
 namespace Nop.Web.Infrastructure
@@ -17,22 +18,32 @@ namespace Nop.Web.Infrastructure
         /// <param name="endpointRouteBuilder">Route builder</param>
         public void RegisterRoutes(IEndpointRouteBuilder endpointRouteBuilder)
         {
-            var pattern = GetRouterPattern(endpointRouteBuilder, seoCode: "{SeName}");
+            var pattern = GetLanguageRoutePattern();
+            pattern += "/";
 
-            endpointRouteBuilder.MapDynamicControllerRoute<SlugRouteTransformer>(pattern);
+            //default routes
+            //these routes are not generic, they are just default to map requests that don't match other patterns, 
+            //but we define them here since this route provider is with the lowest priority, to allow to add additional routes before them
+            endpointRouteBuilder.MapControllerRoute(name: "Default",
+                pattern: $"{pattern}{{controller=Home}}/{{action=Index}}/{{id?}}");
 
-            //and default one
-            endpointRouteBuilder.MapControllerRoute(
-                name: "Default",
+            endpointRouteBuilder.MapControllerRoute(name: "Default",
                 pattern: "{controller=Home}/{action=Index}/{id?}");
 
-            //generic URLs
-            endpointRouteBuilder.MapControllerRoute(
-                name: "GenericUrl",
-                pattern: "{GenericSeName}",
+            //generic routes
+            pattern += "{SeName}/";
+
+            if (DataSettingsManager.IsDatabaseInstalled())
+                endpointRouteBuilder.MapDynamicControllerRoute<SlugRouteTransformer>(pattern);
+
+            endpointRouteBuilder.MapControllerRoute(name: "GenericUrl",
+                pattern: "{genericSeName}",
                 new { controller = "Common", action = "GenericUrl" });
 
-            //define this routes to use in UI views (in case if you want to customize some of them later)
+            endpointRouteBuilder.MapControllerRoute(name: "GenericUrl",
+                pattern: "{genericSeName}/{genericParameter}",
+                new { controller = "Common", action = "GenericUrl" });
+
             endpointRouteBuilder.MapControllerRoute("Product", pattern,
                 new { controller = "Product", action = "ProductDetails" });
 
@@ -54,7 +65,6 @@ namespace Nop.Web.Infrastructure
             endpointRouteBuilder.MapControllerRoute("Topic", pattern,
                 new { controller = "Topic", action = "TopicDetails" });
 
-            //product tags
             endpointRouteBuilder.MapControllerRoute("ProductsByTag", pattern,
                 new { controller = "Catalog", action = "ProductsByTag" });
         }

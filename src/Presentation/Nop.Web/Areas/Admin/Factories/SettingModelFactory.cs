@@ -444,6 +444,8 @@ namespace Nop.Web.Areas.Admin.Factories
                 PageTitleSeparator = seoSettings.PageTitleSeparator,
                 PageTitleSeoAdjustment = (int)seoSettings.PageTitleSeoAdjustment,
                 PageTitleSeoAdjustmentValues = await seoSettings.PageTitleSeoAdjustment.ToSelectListAsync(),
+                HomepageTitle = seoSettings.HomepageTitle,
+                HomepageDescription = seoSettings.HomepageDescription,
                 DefaultTitle = seoSettings.DefaultTitle,
                 DefaultMetaKeywords = seoSettings.DefaultMetaKeywords,
                 DefaultMetaDescription = seoSettings.DefaultMetaDescription,
@@ -466,6 +468,8 @@ namespace Nop.Web.Areas.Admin.Factories
             model.PageTitleSeparator_OverrideForStore = await _settingService.SettingExistsAsync(seoSettings, x => x.PageTitleSeparator, storeId);
             model.PageTitleSeoAdjustment_OverrideForStore = await _settingService.SettingExistsAsync(seoSettings, x => x.PageTitleSeoAdjustment, storeId);
             model.DefaultTitle_OverrideForStore = await _settingService.SettingExistsAsync(seoSettings, x => x.DefaultTitle, storeId);
+            model.HomepageTitle_OverrideForStore = await _settingService.SettingExistsAsync(seoSettings, x => x.HomepageTitle, storeId);
+            model.HomepageDescription_OverrideForStore = await _settingService.SettingExistsAsync(seoSettings, x => x.HomepageDescription, storeId);
             model.DefaultMetaKeywords_OverrideForStore = await _settingService.SettingExistsAsync(seoSettings, x => x.DefaultMetaKeywords, storeId);
             model.DefaultMetaDescription_OverrideForStore = await _settingService.SettingExistsAsync(seoSettings, x => x.DefaultMetaDescription, storeId);
             model.GenerateProductMetaDescription_OverrideForStore = await _settingService.SettingExistsAsync(seoSettings, x => x.GenerateProductMetaDescription, storeId);
@@ -735,19 +739,21 @@ namespace Nop.Web.Areas.Admin.Factories
         /// Prepare app settings model
         /// </summary>
         /// <returns>App settings model</returns>
-        public virtual AppSettingsModel PrepareAppSettingsModel()
+        public virtual async Task<AppSettingsModel> PrepareAppSettingsModel()
         {
             var model = new AppSettingsModel
             {
                 CacheConfigModel = _appSettings.CacheConfig.ToConfigModel<CacheConfigModel>(),
                 HostingConfigModel = _appSettings.HostingConfig.ToConfigModel<HostingConfigModel>(),
-                RedisConfigModel = _appSettings.RedisConfig.ToConfigModel<RedisConfigModel>(),
+                DistributedCacheConfigModel = _appSettings.DistributedCacheConfig.ToConfigModel<DistributedCacheConfigModel>(),
                 AzureBlobConfigModel = _appSettings.AzureBlobConfig.ToConfigModel<AzureBlobConfigModel>(),
                 InstallationConfigModel = _appSettings.InstallationConfig.ToConfigModel<InstallationConfigModel>(),
                 PluginConfigModel = _appSettings.PluginConfig.ToConfigModel<PluginConfigModel>(),
                 CommonConfigModel = _appSettings.CommonConfig.ToConfigModel<CommonConfigModel>()
             };
 
+            model.DistributedCacheConfigModel.DistributedCacheTypeValues = await _appSettings.DistributedCacheConfig.DistributedCacheType.ToSelectListAsync();
+            
             return model;
         }
 

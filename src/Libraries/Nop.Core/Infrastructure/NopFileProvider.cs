@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Runtime.Versioning;
 using System.Security.AccessControl;
 using System.Text;
 using System.Threading;
@@ -272,6 +273,7 @@ namespace Nop.Core.Infrastructure
         /// </summary>
         /// <param name="path">The path to a directory containing a System.Security.AccessControl.DirectorySecurity object that describes the file's access control list (ACL) information</param>
         /// <returns>An object that encapsulates the access control rules for the file described by the path parameter</returns>
+        [SupportedOSPlatform("windows")]
         public virtual DirectorySecurity GetAccessControl(string path)
         {
             return new DirectoryInfo(path).GetAccessControl();
@@ -524,21 +526,7 @@ namespace Nop.Core.Infrastructure
 
             return streamReader.ReadToEnd();
         }
-
-        //TODO: Delete unused method
-        /// <summary>
-        /// Sets the date and time, in coordinated universal time (UTC), that the specified file was last written to
-        /// </summary>
-        /// <param name="path">The file for which to set the date and time information</param>
-        /// <param name="lastWriteTimeUtc">
-        /// A System.DateTime containing the value to set for the last write date and time of path.
-        /// This value is expressed in UTC time
-        /// </param>
-        public virtual void SetLastWriteTimeUtc(string path, DateTime lastWriteTimeUtc)
-        {
-            File.SetLastWriteTimeUtc(path, lastWriteTimeUtc);
-        }
-
+        
         /// <summary>
         /// Writes the specified byte array to the file
         /// </summary>

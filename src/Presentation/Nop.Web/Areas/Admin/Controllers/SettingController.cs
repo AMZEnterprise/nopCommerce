@@ -187,7 +187,7 @@ namespace Nop.Web.Areas.Admin.Controllers
                 return AccessDeniedView();
 
             //prepare model
-            var model = _settingModelFactory.PrepareAppSettingsModel();
+            var model = await _settingModelFactory.PrepareAppSettingsModel();
 
             return View(model);
         }
@@ -201,7 +201,7 @@ namespace Nop.Web.Areas.Admin.Controllers
             var appSettings = _appSettings;
             appSettings.CacheConfig = model.CacheConfigModel.ToConfig(appSettings.CacheConfig);
             appSettings.HostingConfig = model.HostingConfigModel.ToConfig(appSettings.HostingConfig);
-            appSettings.RedisConfig = model.RedisConfigModel.ToConfig(appSettings.RedisConfig);
+            appSettings.DistributedCacheConfig = model.DistributedCacheConfigModel.ToConfig(appSettings.DistributedCacheConfig);
             appSettings.AzureBlobConfig = model.AzureBlobConfigModel.ToConfig(appSettings.AzureBlobConfig);
             appSettings.InstallationConfig = model.InstallationConfigModel.ToConfig(appSettings.InstallationConfig);
             appSettings.PluginConfig = model.PluginConfigModel.ToConfig(appSettings.PluginConfig);
@@ -1272,7 +1272,7 @@ namespace Nop.Web.Areas.Admin.Controllers
 
         #endregion
 
-        public virtual async Task<IActionResult> GeneralCommon()
+        public virtual async Task<IActionResult> GeneralCommon(bool showtour = false)
         {
             if (!await _permissionService.AuthorizeAsync(StandardPermissionProvider.ManageSettings))
                 return AccessDeniedView();
@@ -1283,6 +1283,17 @@ namespace Nop.Web.Areas.Admin.Controllers
             //notify admin that CSS bundling is not allowed in virtual directories
             if (model.MinificationSettings.EnableCssBundling && HttpContext.Request.PathBase.HasValue)
                 _notificationService.WarningNotification(await _localizationService.GetResourceAsync("Admin.Configuration.Settings.GeneralCommon.EnableCssBundling.Warning"));
+
+            //show configuration tour
+            if (showtour)
+            {
+                var hideCard = await _genericAttributeService.GetAttributeAsync<bool>(await _workContext.GetCurrentCustomerAsync(), NopCustomerDefaults.HideConfigurationStepsAttribute);
+
+                var closeCard = await _genericAttributeService.GetAttributeAsync<bool>(await _workContext.GetCurrentCustomerAsync(), NopCustomerDefaults.CloseConfigurationStepsAttribute);
+
+                if (!hideCard && !closeCard)
+                    ViewBag.ShowTour = true;
+            }
 
             return View(model);
         }
@@ -1370,6 +1381,8 @@ namespace Nop.Web.Areas.Admin.Controllers
             var seoSettings = await _settingService.LoadSettingAsync<SeoSettings>(storeScope);
             seoSettings.PageTitleSeparator = model.SeoSettings.PageTitleSeparator;
             seoSettings.PageTitleSeoAdjustment = (PageTitleSeoAdjustment)model.SeoSettings.PageTitleSeoAdjustment;
+            seoSettings.HomepageTitle = model.SeoSettings.HomepageTitle;
+            seoSettings.HomepageDescription = model.SeoSettings.HomepageDescription;
             seoSettings.DefaultTitle = model.SeoSettings.DefaultTitle;
             seoSettings.DefaultMetaKeywords = model.SeoSettings.DefaultMetaKeywords;
             seoSettings.DefaultMetaDescription = model.SeoSettings.DefaultMetaDescription;
@@ -1387,6 +1400,8 @@ namespace Nop.Web.Areas.Admin.Controllers
             //and loaded from database after each update
             await _settingService.SaveSettingOverridablePerStoreAsync(seoSettings, x => x.PageTitleSeparator, model.SeoSettings.PageTitleSeparator_OverrideForStore, storeScope, false);
             await _settingService.SaveSettingOverridablePerStoreAsync(seoSettings, x => x.PageTitleSeoAdjustment, model.SeoSettings.PageTitleSeoAdjustment_OverrideForStore, storeScope, false);
+            await _settingService.SaveSettingOverridablePerStoreAsync(seoSettings, x => x.HomepageTitle, model.SeoSettings.HomepageTitle_OverrideForStore, storeScope, false);
+            await _settingService.SaveSettingOverridablePerStoreAsync(seoSettings, x => x.HomepageDescription, model.SeoSettings.HomepageDescription_OverrideForStore, storeScope, false);
             await _settingService.SaveSettingOverridablePerStoreAsync(seoSettings, x => x.DefaultTitle, model.SeoSettings.DefaultTitle_OverrideForStore, storeScope, false);
             await _settingService.SaveSettingOverridablePerStoreAsync(seoSettings, x => x.DefaultMetaKeywords, model.SeoSettings.DefaultMetaKeywords_OverrideForStore, storeScope, false);
             await _settingService.SaveSettingOverridablePerStoreAsync(seoSettings, x => x.DefaultMetaDescription, model.SeoSettings.DefaultMetaDescription_OverrideForStore, storeScope, false);
@@ -1848,11 +1863,11 @@ namespace Nop.Web.Areas.Admin.Controllers
         }
 
         //action displaying notification (warning) to a store owner about a lot of traffic 
-        //between the Redis server and the application when LoadAllLocaleRecordsOnStartup setting is set
-        public async Task<IActionResult> RedisCacheHighTrafficWarning(bool loadAllLocaleRecordsOnStartup)
+        //between the distributed cache server and the application when LoadAllLocaleRecordsOnStartup setting is set
+        public async Task<IActionResult> DistributedCacheHighTrafficWarning(bool loadAllLocaleRecordsOnStartup)
         {
-            //LoadAllLocaleRecordsOnStartup is set and Redis cache is used, so display warning
-            if (_appSettings.RedisConfig.Enabled && _appSettings.RedisConfig.UseCaching && loadAllLocaleRecordsOnStartup)
+            //LoadAllLocaleRecordsOnStartup is set and distributed cache is used, so display warning
+            if (_appSettings.DistributedCacheConfig.Enabled && _appSettings.DistributedCacheConfig.DistributedCacheType != DistributedCacheType.Memory && loadAllLocaleRecordsOnStartup)
             {
                 return Json(new
                 {

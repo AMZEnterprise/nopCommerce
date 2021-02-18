@@ -347,10 +347,12 @@ namespace Nop.Web.Factories
         protected virtual async Task<List<CategorySimpleModel>> PrepareCategorySimpleModelsAsync()
         {
             //load and cache them
+            var language = await _workContext.GetWorkingLanguageAsync();
+            var customer = await _workContext.GetCurrentCustomerAsync();
+            var customerRolesIds = await _customerService.GetCustomerRoleIdsAsync(customer);
+            var store = await _storeContext.GetCurrentStoreAsync();
             var cacheKey = _staticCacheManager.PrepareKeyForDefaultCache(NopModelCacheDefaults.CategoryAllModelKey,
-                await _workContext.GetWorkingLanguageAsync(),
-                _customerService.GetCustomerRoleIdsAsync(await _workContext.GetCurrentCustomerAsync()),
-                await _storeContext.GetCurrentStoreAsync());
+                language, customerRolesIds, store);
 
             return await _staticCacheManager.GetAsync(cacheKey, async () => await PrepareCategorySimpleModelsAsync(0));
         }
@@ -416,10 +418,12 @@ namespace Nop.Web.Factories
         /// <returns>Xml document of category (simple) models</returns>
         protected virtual async Task<XDocument> PrepareCategoryXmlDocumentAsync()
         {
+            var language = await _workContext.GetWorkingLanguageAsync();
+            var customer = await _workContext.GetCurrentCustomerAsync();
+            var customerRolesIds = await _customerService.GetCustomerRoleIdsAsync(customer);
+            var store = await _storeContext.GetCurrentStoreAsync();
             var cacheKey = _staticCacheManager.PrepareKeyForDefaultCache(NopModelCacheDefaults.CategoryXmlAllModelKey,
-                await _workContext.GetWorkingLanguageAsync(),
-                _customerService.GetCustomerRoleIdsAsync(await _workContext.GetCurrentCustomerAsync()),
-                await _storeContext.GetCurrentStoreAsync());
+                language, customerRolesIds, store);
 
             return await _staticCacheManager.GetAsync(cacheKey, async () =>
             {
@@ -427,8 +431,14 @@ namespace Nop.Web.Factories
 
                 var xsSubmit = new XmlSerializer(typeof(List<CategorySimpleModel>));
 
+                var settings = new XmlWriterSettings
+                {
+                    Async = true,
+                    ConformanceLevel = ConformanceLevel.Auto
+                };
+
                 await using var strWriter = new StringWriter();
-                using var writer = XmlWriter.Create(strWriter);
+                await using var writer = XmlWriter.Create(strWriter, settings);
                 xsSubmit.Serialize(writer, categories);
                 var xml = strWriter.ToString();
 
@@ -645,11 +655,11 @@ namespace Nop.Web.Factories
             //top menu topics
             var topicModel = await (await _topicService.GetAllTopicsAsync((await _storeContext.GetCurrentStoreAsync()).Id, onlyIncludedInTopMenu: true))
                 .SelectAwait(async t => new TopMenuModel.TopicModel
-                    {
-                        Id = t.Id,
-                        Name = await _localizationService.GetLocalizedAsync(t, x => x.Title),
-                        SeName = await _urlRecordService.GetSeNameAsync(t)
-                    }).ToListAsync();
+                {
+                    Id = t.Id,
+                    Name = await _localizationService.GetLocalizedAsync(t, x => x.Title),
+                    SeName = await _urlRecordService.GetSeNameAsync(t)
+                }).ToListAsync();
 
             var model = new TopMenuModel
             {
@@ -677,61 +687,60 @@ namespace Nop.Web.Factories
         /// <returns>List of homepage category models</returns>
         public virtual async Task<List<CategoryModel>> PrepareHomepageCategoryModelsAsync()
         {
+            var language = await _workContext.GetWorkingLanguageAsync();
+            var customer = await _workContext.GetCurrentCustomerAsync();
+            var customerRolesIds = await _customerService.GetCustomerRoleIdsAsync(customer);
+            var store = await _storeContext.GetCurrentStoreAsync();
             var pictureSize = _mediaSettings.CategoryThumbPictureSize;
-
             var categoriesCacheKey = _staticCacheManager.PrepareKeyForDefaultCache(NopModelCacheDefaults.CategoryHomepageKey,
-                pictureSize,
-                await _workContext.GetWorkingLanguageAsync(),
-                _webHelper.IsCurrentConnectionSecured());
+                store, customerRolesIds, pictureSize, language, _webHelper.IsCurrentConnectionSecured());
 
             var model = await _staticCacheManager.GetAsync(categoriesCacheKey, async () =>
-                await (await _categoryService.GetAllCategoriesDisplayedOnHomepageAsync())
-                .SelectAwait(async category =>
+            {
+                var homepageCategories = await _categoryService.GetAllCategoriesDisplayedOnHomepageAsync();
+                return await homepageCategories.SelectAwait(async category =>
+                {
+                    var catModel = new CategoryModel
                     {
-                        var catModel = new CategoryModel
+                        Id = category.Id,
+                        Name = await _localizationService.GetLocalizedAsync(category, x => x.Name),
+                        Description = await _localizationService.GetLocalizedAsync(category, x => x.Description),
+                        MetaKeywords = await _localizationService.GetLocalizedAsync(category, x => x.MetaKeywords),
+                        MetaDescription = await _localizationService.GetLocalizedAsync(category, x => x.MetaDescription),
+                        MetaTitle = await _localizationService.GetLocalizedAsync(category, x => x.MetaTitle),
+                        SeName = await _urlRecordService.GetSeNameAsync(category),
+                    };
+
+                    //prepare picture model
+                    var secured = _webHelper.IsCurrentConnectionSecured();
+                    var categoryPictureCacheKey = _staticCacheManager.PrepareKeyForDefaultCache(NopModelCacheDefaults.CategoryPictureModelKey,
+                        category, pictureSize, true, language, secured, store);
+                    catModel.PictureModel = await _staticCacheManager.GetAsync(categoryPictureCacheKey, async () =>
+                    {
+                        var picture = await _pictureService.GetPictureByIdAsync(category.PictureId);
+                        string fullSizeImageUrl, imageUrl;
+
+                        (fullSizeImageUrl, picture) = await _pictureService.GetPictureUrlAsync(picture);
+                        (imageUrl, _) = await _pictureService.GetPictureUrlAsync(picture, pictureSize);
+
+                        var titleLocale = await _localizationService.GetResourceAsync("Media.Category.ImageLinkTitleFormat");
+                        var altLocale = await _localizationService.GetResourceAsync("Media.Category.ImageAlternateTextFormat");
+                        return new PictureModel
                         {
-                            Id = category.Id,
-                            Name = await _localizationService.GetLocalizedAsync(category, x => x.Name),
-                            Description = await _localizationService.GetLocalizedAsync(category, x => x.Description),
-                            MetaKeywords = await _localizationService.GetLocalizedAsync(category, x => x.MetaKeywords),
-                            MetaDescription = await _localizationService.GetLocalizedAsync(category, x => x.MetaDescription),
-                            MetaTitle = await _localizationService.GetLocalizedAsync(category, x => x.MetaTitle),
-                            SeName = await _urlRecordService.GetSeNameAsync(category),
+                            FullSizeImageUrl = fullSizeImageUrl,
+                            ImageUrl = imageUrl,
+                            Title = string.Format(titleLocale, catModel.Name),
+                            AlternateText = string.Format(altLocale, catModel.Name)
                         };
+                    });
 
-                        //prepare picture model
-                        var categoryPictureCacheKey = _staticCacheManager.PrepareKeyForDefaultCache(NopModelCacheDefaults.CategoryPictureModelKey,
-                            category, pictureSize, true, await _workContext.GetWorkingLanguageAsync(),
-                            _webHelper.IsCurrentConnectionSecured(), await _storeContext.GetCurrentStoreAsync());
-                        catModel.PictureModel = await _staticCacheManager.GetAsync(categoryPictureCacheKey, async () =>
-                        {
-                            var picture = await _pictureService.GetPictureByIdAsync(category.PictureId);
-                            string fullSizeImageUrl, imageUrl;
-
-                            (fullSizeImageUrl, picture) = await _pictureService.GetPictureUrlAsync(picture);
-                            (imageUrl, _) = await _pictureService.GetPictureUrlAsync(picture, pictureSize);
-
-                            var pictureModel = new PictureModel
-                            {
-                                FullSizeImageUrl = fullSizeImageUrl,
-                                ImageUrl = imageUrl,
-                                Title = string.Format(
-                                    await _localizationService.GetResourceAsync("Media.Category.ImageLinkTitleFormat"),
-                                    catModel.Name),
-                                AlternateText =
-                                    string.Format(
-                                        await _localizationService.GetResourceAsync("Media.Category.ImageAlternateTextFormat"),
-                                        catModel.Name)
-                            };
-                            return pictureModel;
-                        });
-
-                        return catModel;
-                    }).ToListAsync());
+                    return catModel;
+                }).ToListAsync();
+            });
 
             return model;
         }
-        
+
         /// <summary>
         /// Prepare root categories for menu
         /// </summary>
@@ -914,16 +923,17 @@ namespace Nop.Web.Factories
         /// <returns>Manufacturer navigation model</returns>
         public virtual async Task<ManufacturerNavigationModel> PrepareManufacturerNavigationModelAsync(int currentManufacturerId)
         {
+            var language = await _workContext.GetWorkingLanguageAsync();
+            var customer = await _workContext.GetCurrentCustomerAsync();
+            var customerRolesIds = await _customerService.GetCustomerRoleIdsAsync(customer);
+            var store = await _storeContext.GetCurrentStoreAsync();
             var cacheKey = _staticCacheManager.PrepareKeyForDefaultCache(NopModelCacheDefaults.ManufacturerNavigationModelKey,
-                currentManufacturerId,
-                await _workContext.GetWorkingLanguageAsync(),
-                await _customerService.GetCustomerRoleIdsAsync(await _workContext.GetCurrentCustomerAsync()),
-                await _storeContext.GetCurrentStoreAsync());
+                currentManufacturerId, language, customerRolesIds, store);
             var cachedModel = await _staticCacheManager.GetAsync(cacheKey, async () =>
             {
                 var currentManufacturer = await _manufacturerService.GetManufacturerByIdAsync(currentManufacturerId);
 
-                var manufacturers = await _manufacturerService.GetAllManufacturersAsync(storeId: (await _storeContext.GetCurrentStoreAsync()).Id,
+                var manufacturers = await _manufacturerService.GetAllManufacturersAsync(storeId: store.Id,
                     pageSize: _catalogSettings.ManufacturersBlockItemsToDisplay);
                 var model = new ManufacturerNavigationModel
                 {
@@ -1087,32 +1097,36 @@ namespace Nop.Web.Factories
         /// <summary>
         /// Prepare popular product tags model
         /// </summary>
+        /// <param name="numberTagsToReturn">The number of tags to be returned; pass 0 to get all tags</param>
         /// <returns>Product tags model</returns>
-        public virtual async Task<PopularProductTagsModel> PreparePopularProductTagsModelAsync()
+        public virtual async Task<PopularProductTagsModel> PreparePopularProductTagsModelAsync(int numberTagsToReturn = 0)
         {
             var model = new PopularProductTagsModel();
 
-            //get all tags
-            var tags = await (await _productTagService.GetAllProductTagsAsync())
-                //filter by current store
-                .WhereAwait(async x => await _productTagService.GetProductCountAsync(x.Id, (await _storeContext.GetCurrentStoreAsync()).Id) > 0)
-                .ToListAsync();
+            var currentStore = await _storeContext.GetCurrentStoreAsync();
 
-            model.TotalTags = tags.Count;
+            var tagStats = await _productTagService.GetProductCountAsync(currentStore.Id);
 
-            model.Tags.AddRange(await tags
-                //order by product count
-                .OrderByDescendingAwait(async x => await _productTagService.GetProductCountAsync(x.Id, (await _storeContext.GetCurrentStoreAsync()).Id))
-                .Take(_catalogSettings.NumberOfProductTags)
-                //sorting
-                .OrderByAwait(async x => await _localizationService.GetLocalizedAsync(x, y => y.Name))
-                .SelectAwait(async tag => new ProductTagModel
+            model.TotalTags = tagStats.Count;
+
+            model.Tags.AddRange(await tagStats
+                //Take the most popular tags if specified
+                .OrderByDescending(x => x.Value).Take(numberTagsToReturn > 0 ? numberTagsToReturn : tagStats.Count)
+                .SelectAwait(async tagStat =>
                 {
-                    Id = tag.Id,
-                    Name = await _localizationService.GetLocalizedAsync(tag, y => y.Name),
-                    SeName = await _urlRecordService.GetSeNameAsync(tag),
-                    ProductCount = await _productTagService.GetProductCountAsync(tag.Id, (await _storeContext.GetCurrentStoreAsync()).Id)
-                }).ToListAsync());
+                    var tag = await _productTagService.GetProductTagByIdAsync(tagStat.Key);
+
+                    return new ProductTagModel
+                    {
+                        Id = tag.Id,
+                        Name = await _localizationService.GetLocalizedAsync(tag, t => t.Name),
+                        SeName = await _urlRecordService.GetSeNameAsync(tag),
+                        ProductCount = tagStat.Value
+                    };
+                })
+                //sorting result
+                .OrderBy(x => x.Name)
+                .ToListAsync());
 
             return model;
         }
@@ -1156,35 +1170,6 @@ namespace Nop.Web.Factories
             model.Products = (await _productModelFactory.PrepareProductOverviewModelsAsync(products)).ToList();
 
             model.PagingFilteringContext.LoadPagedList(products);
-            return model;
-        }
-
-        /// <summary>
-        /// Prepare product tags all model
-        /// </summary>
-        /// <returns>Popular product tags model</returns>
-        public virtual async Task<PopularProductTagsModel> PrepareProductTagsAllModelAsync()
-        {
-            var model = new PopularProductTagsModel
-            {
-                Tags = await (await _productTagService.GetAllProductTagsAsync())
-                //filter by current store
-                .WhereAwait(async x => await _productTagService.GetProductCountAsync(x.Id, (await _storeContext.GetCurrentStoreAsync()).Id) > 0)
-                //sort by name
-                .OrderByAwait(async x => await _localizationService.GetLocalizedAsync(x, y => y.Name))
-                .SelectAwait(async x =>
-                {
-                    var ptModel = new ProductTagModel
-                    {
-                        Id = x.Id,
-                        Name = await _localizationService.GetLocalizedAsync(x, y => y.Name),
-                        SeName = await _urlRecordService.GetSeNameAsync(x),
-                        ProductCount = await _productTagService.GetProductCountAsync(x.Id, (await _storeContext.GetCurrentStoreAsync()).Id)
-                    };
-                    return ptModel;
-                })
-                .ToListAsync()
-            };
             return model;
         }
 

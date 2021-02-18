@@ -362,19 +362,14 @@ namespace Nop.Plugin.Shipping.ShipStation.Services
 
         protected virtual string GetOrderStatus(Order order)
         {
-            switch (order.OrderStatus)
+            return order.OrderStatus switch
             {
-                case OrderStatus.Pending:
-                    return "unpaid";
-                case OrderStatus.Processing:
-                    return "paid";
-                case OrderStatus.Complete:
-                    return "shipped";
-                case OrderStatus.Cancelled:
-                    return "cancelled";
-                default:
-                    return "on_hold";
-            }
+                OrderStatus.Pending => "unpaid",
+                OrderStatus.Processing => "paid",
+                OrderStatus.Complete => "shipped",
+                OrderStatus.Cancelled => "cancelled",
+                _ => "on_hold",
+            };
         }
 
         protected virtual async Task WriteOrderToXmlAsync(XmlWriter writer, Order order)
@@ -529,7 +524,7 @@ namespace Nop.Plugin.Shipping.ShipStation.Services
             };
 
             await using var stream = new MemoryStream();
-            using var writer = XmlWriter.Create(stream, settings);
+            await using var writer = XmlWriter.Create(stream, settings);
 
             await writer.WriteStartDocumentAsync();
             await writer.WriteStartElementAsync("Orders");
